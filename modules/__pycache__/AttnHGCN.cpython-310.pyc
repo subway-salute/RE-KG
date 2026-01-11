@@ -1,0 +1,82 @@
+o
+      ff?  ?                   @   st   d dl Zd dlZd dlmZ d dlm  mZ  d dlm	Z	m
+Z
+ d dl
+mZ
+ d dlZd dlmZ G dd? dej?ZdS ) ?    N)?scatter_mean?scatter_sum)?softmax)?getLoggerc                       sv   e Zd ZdZ	d? fdd?Zdd ? Zdd	? Z	
+ddd
+?Z ddd?Zddd?Z	dd? Z
+dd? Z
+e?? ddd??Z?  ZS )?AttnHGCNz3
+    Heterogeneous Graph Convolutional Network
+    ?      ?çš™™™™™¹?c            	         s?   t t| ???  t? | _t?? | _ || _|| _	|| _
+|| _
+tjj
+} | t?|d |??}t?|?| _t?t?||??| _d| _|| j | _tj?| j? || _tj|d?| _d S )N?   ?   )?p)?superr   ?__init__r   ?logger?nn?ModuleListZ
+no_attn_convs?n_relations?n_users?node_dropout_rate?mess_dropout_rate?init?xavier_uniform_?torch?empty?Parameter?relation_emb?Tensor?W_Q?n_heads?d_k?n_hops?Dropout?dropout)	?self?channelr   r   r   r   r   ?initializerr   ??__class__? ?D:\PycharmProject\KGRec-main\modules\AttnHGCN.pyr
+      s    
+zAttnHGCN.__init__c                 C   s?   |j d }	 |\}	}
+| |d  }
+||
+ |
+ }t||	|dd?}
+	 |?d?||dd d ?f   }t||dd d ?f |j d dd?}|
+|fS )Nr   r	   ??src?index?dim_size?dim?ÿÿÿ)?shaper   ?unsqueezer   )r"   ?user_emb?entity_emb?edge_index?edge_type?inter_edge?inter_edge_wr   ?n_entities?head?tail?edge_relation_emb?neigh_relation_emb?entity_agg?item_agg?user_aggr'   r'   r(   ?non_attn_agg*   s   
+"zAttnHGCN.non_attn_aggc                 C   s8  |j d }|\}	}
+||	 | j ?d| j| j?}
+||
+ | j ?d| j| j?}|| |d  ?d| j| j? }|
+| jdd?t?| j? }
+| |d  } ||
+ |  }|?d| j| j?}t|
+|	?}
+||
+?d| jd? }|?d| j| j ?}t	||	|dd?}|?d?||dd d ?f   }t	||dd d ?f |j d dd?}||fS )Nr   r.   r	   ?r-   r)   )
+r/   r   ?viewr   r   ?sum?math?sqrt?scatter_softmaxr   r0   )r"   r1   r2   r3   r4   r5   r6   r   r7   r8   r9   ?query?key?edge_attn_scorer;   ?valuer<   r=   r>   r'   r'   r(   ?shared_layer_agg9   s    
+
+"zAttnHGCN.shared_layer_aggTNc	           
+   
+   C   s  |d urH||dd d ?f  }t ||dd d ?f ?}tt?|dd d ?f ?|dd d ?f d|jd d?}	t?|	d|dd d ?f ?}	||	 }|| }|}
+|}
+t| j ?D ]4}| ?||||||| j	?\}}	 | rn| ?|?}| ?|?}t
+?|?}t
+?|?}	 t?|
+|?}
+t?|
+|?}
+qQ|
+|
+fS )Nr	   r   ?r-   r,   )rE   r   r   ?ones_liker/   ?index_select?ranger   rJ   r   r!   ?F?normalize?add)
+r"   r1   r2   r3   r4   r5   r6   ?mess_dropoutZ	item_attn?norm?entity_res_embZuser_res_emb?ir'   r'   r(   ?forwardV   s*   4
+
+
+
+zAttnHGCN.forwardc                  C   sh   |}t | j?D ]*} | ?||||?\}}	 |r | ?|?}| ?|?}t?|?}t?|?}	 t?||?}q |S ?N)rN   r   ?ui_aggr!   rO   rP   r   rQ   )r"   r1   ?item_embr5   r6   rR   Zitem_res_embrU   r'   r'   r(   ?forward_uis   s   
+
+
+
+zAttnHGCN.forward_uic                  C   sN   |}t | j?D ]}| ?|||?}	 |r| ?|?}t?|?}	 t?||?}q |S rW   )rN   r   ?kg_aggr!   rO   rP   r   rQ   ) r"   r2   r3   r4   rR   rT   rU   r'   r'   r(   ?forward_kg?   s   
+
+zAttnHGCN.forward_kgc                 C   s?   |j d }|?d?||dd d ?f   }t||dd d ?f |j d dd?}|?d?||dd d ?f   }t||dd d ?f |dd?} || fS )Nr   r.   r	   r)   )r/   r0   r   )r"   r1   rY   r5   r6   Z	num_itemsr>   r=   r'   r'   r(   rX   ?   s   
+"zAttnHGCN.ui_aggc           
+      C   s@   |j d }|\}}| j|d  } || |  }t|||dd?}	|	S )Nr   r	   r)   )r/   r   r   )
+r"   r2   r3   r4   r7   r8   r9   r:   r;   r<   r'   r'   r(   r[   ?   s   
+zAttnHGCN.kg_aggFc                 C   s?   |\}} || | j  ?d| j| j?}||  | j  ?d| j| j?}	|d ur4|	| j|d  ?d| j| j? }	||	 jdd?t?| j? }
+|
+?d??? }
+t
+|
+|?}t
+t?|?|d|jd d?}
+t?|
+d|?}
+||
+ }|rt| j?d?|?? ?? |rz||
+fS |S ) Nr.   r	   r@   r   rK   zedge_attn_score std: {})r   rA   r   r   r   rB   rC   rD   ?mean?detachrE   r   r   rL   r/   rM   r   ?info?format?std)r"   r2   r3   r4   ?print?return_logitsr8   r9   rF   rG   Z	edge_attn?edge_attn_logitsrH   rS   r'   r'   r(   ?norm_attn_computer?   s     
+zAttnHGCN.norm_attn_computer)r    r   )TN)T)NFF)?__name__?__module__?__qualname__?__doc__r
+   r?   rJ   rV   rZ   r\   rX   r[   r   ?no_gradre   ?__classcell__r'   r'   r%   r(   r   
+   s    ?
+ÿ
+
+
+r   )?numpy?npr   ?torch.nnr   ?torch.nn.functional?functionalrO   ?torch_scatterr   r   Ztorch_geometric.utilsr   rE   rC   ?loggingr   ?Moduler   r'   r'   r'   r(   ?<module>   s    

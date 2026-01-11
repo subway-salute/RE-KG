@@ -1,0 +1,22 @@
+o
+      ff?  ?                   @   s2   d dl Z d dlm  mZ G dd? de jj?ZdS )?    Nc                       sr   e Zd Zddedef? fdd?Zdej d ej fdd	?Zd
+d
+? Z	dej d ej fdd
+?Z
+dej d ej fdd?Z
+?  ZS )?Contrastçffffff??num_hidden?tauc              	      s€   t t| ???  || _tj?tjj ||dd?tj?? tjj ||dd??| _	tj?tjj ||dd?tj?? tjj ||dd??| _
+d S )NT)?bias)
+?superr   ?__init__r   ?torch?nn?Sequential?Linear?ReLU?mlp1?mlp2)?selfr   r   ??__class__? ?D:\PycharmProject\KGRec-main\modules\contrast.pyr      s   ?
+ýzContrast.__init__?z1?z2c                 C   s$   t ?|?}t ?|?}t?||?? ?S ?N)?F?normalizer	   ?mm?t?r   r   r   r   r   r   ?sim   s   
+
+zContrast.simc                 C   s"   t ?|?}t ?|?}|| ?d?S )N?   )r   r   ?sumr   r   r   r   ?self_sim   s   
+
+zContrast.self_simc                      sl   ? fdd?}|? ? ||??}t?|jd ?}|? ? ||| ??|? ? ||| ?? }t?||| |  ?
+ S )Nc                    s   t ?| ? j ?S r   )r	   ?expr   )?x?r   r   r   ?<lambda>   s    zContrast.loss.<locals>.<lambda>r   )r    r	   ?randperm?shape?log) r   r   r   ?fZ
+between_simZ	rand_itemZ neg_simr   r#   r   ?loss   s
+   (z
+Contrast.lossc                 C   s(   | ? |?}| ?|?}| ?||??? }|S r   )r   r   r)   ?mean)r   r   r   ?h1?h2r)   r   r   r   ?forward&   s   
+
+zContrast.forward)r   )
+?__name__?__module__?__qualname__?int?floatr   r	   ?Tensorr   r    r)   r-   ?__classcell__r   r   r   r   r      s    r   ) r	   ?torch.nn.functionalr
+   ?functionalr   ?Moduler   r   r   r   r   ?<module>   s    
